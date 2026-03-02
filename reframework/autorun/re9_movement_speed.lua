@@ -91,21 +91,38 @@ local function set_layer_speed(speed)
     if layer then layer:call("set_Speed", speed) end
 end
 
+-- patch internal move speed so 1st-person camera keeps up with animation
+local current_speed_factor = DEFAULT_SPEED
+do
+    local td = sdk.find_type_definition("app.MovementDriver")
+    local m = td and td:get_method("getMoveSpeed")
+    if m then
+        sdk.hook(m, nil, function(ret)
+            if not cfg.enabled or current_speed_factor == DEFAULT_SPEED then return ret end
+            local v = sdk.to_float(ret)
+            return v and sdk.float_to_ptr(v * current_speed_factor) or ret
+        end)
+    end
+end
+
 pcall(load_config)
 
 re.on_pre_application_entry("LateUpdateBehavior", function()
-    if not cfg.enabled then return end
+    if not cfg.enabled then
+        current_speed_factor = DEFAULT_SPEED
+        set_layer_speed(DEFAULT_SPEED)
+        return
+    end
     local ok, character, move_type = pcall(get_motion_info)
     if not ok then return end
 
     if character and move_type then
         local char_cfg = cfg[character]
-        if move_type == "walk" then
-            set_layer_speed(char_cfg.walk_speed)
-        else
-            set_layer_speed(char_cfg.run_speed)
-        end
+        local spd = (move_type == "walk") and char_cfg.walk_speed or char_cfg.run_speed
+        current_speed_factor = spd
+        set_layer_speed(spd)
     else
+        current_speed_factor = DEFAULT_SPEED
         set_layer_speed(DEFAULT_SPEED)
     end
 end)
@@ -116,20 +133,20 @@ re.on_draw_ui(function()
     local c, v
 
     c, v = imgui.checkbox("Enable", cfg.enabled)
-    if c then cfg.enabled = v; changed = true; if not v then set_layer_speed(DEFAULT_SPEED) end end
+    if c then cfg.enabled = v; changed = true; if not v then current_speed_factor = DEFAULT_SPEED; set_layer_speed(DEFAULT_SPEED) end end
 
     imgui.separator()
     imgui.text("-- Grace --")
-    c, v = imgui.slider_float("Walk Speed (Grace)", cfg.grace.walk_speed, 0.5, 3.0, "%.2f")
+    c, v = imgui.slider_float("Walk Speed##grace", cfg.grace.walk_speed, 0.5, 3.0, "%.2f")
     if c then cfg.grace.walk_speed = v; changed = true end
-    c, v = imgui.slider_float("Run Speed (Grace)", cfg.grace.run_speed, 0.5, 3.0, "%.2f")
+    c, v = imgui.slider_float("Run Speed##grace", cfg.grace.run_speed, 0.5, 3.0, "%.2f")
     if c then cfg.grace.run_speed = v; changed = true end
 
     imgui.separator()
     imgui.text("-- Leon --")
-    c, v = imgui.slider_float("Walk Speed (Leon)", cfg.leon.walk_speed, 0.5, 3.0, "%.2f")
+    c, v = imgui.slider_float("Walk Speed##leon", cfg.leon.walk_speed, 0.5, 3.0, "%.2f")
     if c then cfg.leon.walk_speed = v; changed = true end
-    c, v = imgui.slider_float("Run Speed (Leon)", cfg.leon.run_speed, 0.5, 3.0, "%.2f")
+    c, v = imgui.slider_float("Run Speed##leon", cfg.leon.run_speed, 0.5, 3.0, "%.2f")
     if c then cfg.leon.run_speed = v; changed = true end
 
     if changed then save_config() end
@@ -137,6 +154,7 @@ re.on_draw_ui(function()
 end)
 
 re.on_script_reset(function()
+    current_speed_factor = DEFAULT_SPEED
     set_layer_speed(DEFAULT_SPEED)
 end)
 re.on_config_save(save_config)
