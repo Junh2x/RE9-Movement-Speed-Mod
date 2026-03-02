@@ -1,8 +1,4 @@
---[[
-    Better Movement Speed for RE9 Requiem
-
-    Requires: REFramework
---]]
+-- Better Movement Speed by junhx2
 
 local MOD_NAME = "[Better Movement Speed]"
 local CONFIG_PATH = "re9_movement_speed.json"
@@ -135,7 +131,19 @@ re.on_draw_ui(function()
     c, v = imgui.checkbox("Enable", cfg.enabled)
     if c then cfg.enabled = v; changed = true; if not v then current_speed_factor = DEFAULT_SPEED; set_layer_speed(DEFAULT_SPEED) end end
 
-    imgui.separator()
+    imgui.spacing()
+    local presets = { 1.0, 1.1, 1.2, 1.3, 1.5, 2.0, 3.0 }
+    for i, p in ipairs(presets) do
+        if i > 1 then imgui.same_line() end
+        local label = p == 1.0 and "Default" or string.format("x%.1f", p)
+        if imgui.button(label) then
+            cfg.grace.walk_speed = p; cfg.grace.run_speed = p
+            cfg.leon.walk_speed = p; cfg.leon.run_speed = p
+            changed = true
+        end
+    end
+    imgui.spacing()
+
     imgui.text("-- Grace --")
     c, v = imgui.slider_float("Walk Speed##grace", cfg.grace.walk_speed, 0.5, 3.0, "%.2f")
     if c then cfg.grace.walk_speed = v; changed = true end
