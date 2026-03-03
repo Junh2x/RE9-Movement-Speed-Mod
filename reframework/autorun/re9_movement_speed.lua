@@ -7,7 +7,7 @@ local DEFAULT_SPEED = 1.0
 local CHARACTERS = {
     { key = "grace", label = "Grace", pattern = "ch0200" },
     { key = "leon",  label = "Leon",  pattern = "ch0100" },
-    { key = "emily", label = "Emily", pattern = "ch0300" },
+    { key = "chloe", label = "Chloe", pattern = "ch0300" },
 }
 
 local function default_char_speed()
