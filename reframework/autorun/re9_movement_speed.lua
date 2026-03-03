@@ -96,13 +96,13 @@ local function set_layer_speed(speed)
     if layer then layer:call("set_Speed", speed) end
 end
 
+-- patch internal move speed so 1st-person camera keeps up with animation
+local current_speed_factor = DEFAULT_SPEED
+
 local function reset_speed()
     current_speed_factor = DEFAULT_SPEED
     set_layer_speed(DEFAULT_SPEED)
 end
-
--- patch internal move speed so 1st-person camera keeps up with animation
-local current_speed_factor = DEFAULT_SPEED
 do
     local td = sdk.find_type_definition("app.MovementDriver")
     local m = td and td:get_method("getMoveSpeed")
