@@ -4,29 +4,40 @@ local MOD_NAME = "[Better Movement Speed]"
 local CONFIG_PATH = "re9_movement_speed.json"
 local DEFAULT_SPEED = 1.0
 
-local cfg = {
-    enabled = true,
-    grace = { walk_speed = 1.3, run_speed = 1.3 },
-    leon  = { walk_speed = 1.3, run_speed = 1.3 },
+local CHARACTERS = {
+    { key = "grace", label = "Grace", pattern = "ch0200" },
+    { key = "leon",  label = "Leon",  pattern = "ch0100" },
+    { key = "emily", label = "Emily", pattern = "ch0300" },
 }
+
+local function default_char_speed()
+    return { walk_speed = 1.3, run_speed = 1.3 }
+end
+
+local cfg = { enabled = true }
+for _, ch in ipairs(CHARACTERS) do
+    cfg[ch.key] = default_char_speed()
+end
 
 local function load_config()
     if not json or not json.load_file then return end
     local ok, d = pcall(json.load_file, CONFIG_PATH)
-    if ok and type(d) == "table" then
-        if type(d.enabled) == "boolean" then cfg.enabled = d.enabled end
-        for _, key in ipairs({"grace", "leon"}) do
-            if type(d[key]) == "table" then
-                if type(d[key].walk_speed) == "number" then cfg[key].walk_speed = d[key].walk_speed end
-                if type(d[key].run_speed) == "number" then cfg[key].run_speed = d[key].run_speed end
-            end
+    if not ok or type(d) ~= "table" then return end
+
+    if type(d.enabled) == "boolean" then cfg.enabled = d.enabled end
+
+    for _, ch in ipairs(CHARACTERS) do
+        if type(d[ch.key]) == "table" then
+            if type(d[ch.key].walk_speed) == "number" then cfg[ch.key].walk_speed = d[ch.key].walk_speed end
+            if type(d[ch.key].run_speed) == "number" then cfg[ch.key].run_speed = d[ch.key].run_speed end
         end
-        -- migrate old flat config
-        if type(d.walk_speed) == "number" and not d.grace then
-            cfg.grace.walk_speed = d.walk_speed
-            cfg.grace.run_speed = d.run_speed or d.walk_speed
-            cfg.leon.walk_speed = d.walk_speed
-            cfg.leon.run_speed = d.run_speed or d.walk_speed
+    end
+
+    -- migrate old flat config
+    if type(d.walk_speed) == "number" and not d.grace then
+        for _, ch in ipairs(CHARACTERS) do
+            cfg[ch.key].walk_speed = d.walk_speed
+            cfg[ch.key].run_speed = d.run_speed or d.walk_speed
         end
     end
 end
@@ -47,7 +58,7 @@ local function get_layer0()
     return motion:call("getLayer", 0)
 end
 
--- Returns: character ("grace"/"leon"/nil), move_type ("walk"/"run"/nil)
+-- Returns: character key (string/nil), move_type ("walk"/"run"/nil)
 local function get_motion_info()
     local layer = get_layer0()
     if not layer then return nil, nil end
@@ -58,20 +69,18 @@ local function get_motion_info()
 
     local lower = name:lower()
 
-    -- skip combat animations
     if lower:find("attack") or lower:find("finish") or lower:find("execution") then
         return nil, nil
     end
 
-    -- character
     local character = nil
-    if lower:find("ch0200") then
-        character = "grace"
-    elseif lower:find("ch0100") then
-        character = "leon"
+    for _, ch in ipairs(CHARACTERS) do
+        if lower:find(ch.pattern) then
+            character = ch.key
+            break
+        end
     end
 
-    -- move type
     local move_type = nil
     if lower:find("walk") then
         move_type = "walk"
@@ -85,6 +94,11 @@ end
 local function set_layer_speed(speed)
     local layer = get_layer0()
     if layer then layer:call("set_Speed", speed) end
+end
+
+local function reset_speed()
+    current_speed_factor = DEFAULT_SPEED
+    set_layer_speed(DEFAULT_SPEED)
 end
 
 -- patch internal move speed so 1st-person camera keeps up with animation
@@ -104,22 +118,17 @@ end
 pcall(load_config)
 
 re.on_pre_application_entry("LateUpdateBehavior", function()
-    if not cfg.enabled then
-        current_speed_factor = DEFAULT_SPEED
-        set_layer_speed(DEFAULT_SPEED)
-        return
-    end
+    if not cfg.enabled then reset_speed(); return end
+
     local ok, character, move_type = pcall(get_motion_info)
     if not ok then return end
 
     if character and move_type then
-        local char_cfg = cfg[character]
-        local spd = (move_type == "walk") and char_cfg.walk_speed or char_cfg.run_speed
+        local spd = (move_type == "walk") and cfg[character].walk_speed or cfg[character].run_speed
         current_speed_factor = spd
         set_layer_speed(spd)
     else
-        current_speed_factor = DEFAULT_SPEED
-        set_layer_speed(DEFAULT_SPEED)
+        reset_speed()
     end
 end)
 
@@ -129,7 +138,7 @@ re.on_draw_ui(function()
     local c, v
 
     c, v = imgui.checkbox("Enable", cfg.enabled)
-    if c then cfg.enabled = v; changed = true; if not v then current_speed_factor = DEFAULT_SPEED; set_layer_speed(DEFAULT_SPEED) end end
+    if c then cfg.enabled = v; changed = true; if not v then reset_speed() end end
 
     imgui.spacing()
     local presets = { 1.0, 1.1, 1.2, 1.3, 1.5, 2.0, 3.0 }
@@ -137,32 +146,27 @@ re.on_draw_ui(function()
         if i > 1 then imgui.same_line() end
         local label = p == 1.0 and "Default" or string.format("x%.1f", p)
         if imgui.button(label) then
-            cfg.grace.walk_speed = p; cfg.grace.run_speed = p
-            cfg.leon.walk_speed = p; cfg.leon.run_speed = p
+            for _, ch in ipairs(CHARACTERS) do
+                cfg[ch.key].walk_speed = p
+                cfg[ch.key].run_speed = p
+            end
             changed = true
         end
     end
     imgui.spacing()
 
-    imgui.text("-- Grace --")
-    c, v = imgui.slider_float("Walk Speed##grace", cfg.grace.walk_speed, 0.5, 3.0, "%.2f")
-    if c then cfg.grace.walk_speed = v; changed = true end
-    c, v = imgui.slider_float("Run Speed##grace", cfg.grace.run_speed, 0.5, 3.0, "%.2f")
-    if c then cfg.grace.run_speed = v; changed = true end
-
-    imgui.separator()
-    imgui.text("-- Leon --")
-    c, v = imgui.slider_float("Walk Speed##leon", cfg.leon.walk_speed, 0.5, 3.0, "%.2f")
-    if c then cfg.leon.walk_speed = v; changed = true end
-    c, v = imgui.slider_float("Run Speed##leon", cfg.leon.run_speed, 0.5, 3.0, "%.2f")
-    if c then cfg.leon.run_speed = v; changed = true end
+    for idx, ch in ipairs(CHARACTERS) do
+        if idx > 1 then imgui.separator() end
+        imgui.text("-- " .. ch.label .. " --")
+        c, v = imgui.slider_float("Walk Speed##" .. ch.key, cfg[ch.key].walk_speed, 0.5, 3.0, "%.2f")
+        if c then cfg[ch.key].walk_speed = v; changed = true end
+        c, v = imgui.slider_float("Run Speed##" .. ch.key, cfg[ch.key].run_speed, 0.5, 3.0, "%.2f")
+        if c then cfg[ch.key].run_speed = v; changed = true end
+    end
 
     if changed then save_config() end
     imgui.tree_pop()
 end)
 
-re.on_script_reset(function()
-    current_speed_factor = DEFAULT_SPEED
-    set_layer_speed(DEFAULT_SPEED)
-end)
+re.on_script_reset(reset_speed)
 re.on_config_save(save_config)
